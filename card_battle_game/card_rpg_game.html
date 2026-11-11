@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card RPG Game</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            user-select: none;
+        }
+        .cinzel {
+            font-family: 'Cinzel', serif;
+        }
+        .card-container {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-container.targetable {
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.8);
+            border-color: #ef4444;
+            animation: pulse-border 1.5s infinite;
+        }
+        .card-container.skill-hunter-targetable {
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.8);
+            border-color: #a855f7;
+            animation: pulse-purple-border 1.5s infinite;
+        }
+        @keyframes pulse-border {
+            0%, 100% { transform: scale(1); border-color: rgba(239, 68, 68, 1); }
+            50% { transform: scale(1.03); border-color: rgba(248, 113, 113, 1); }
+        }
+        @keyframes pulse-purple-border {
+            0%, 100% { transform: scale(1); border-color: rgba(168, 85, 247, 1); }
+            50% { transform: scale(1.03); border-color: rgba(192, 132, 252, 1); }
+        }
+        .damage-popup {
+            position: absolute;
+            animation: floatUp 1.2s ease-out forwards;
+            font-weight: 800;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+            pointer-events: none;
+            z-index: 50;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+            50% { transform: translate(-50%, -30px) scale(1.3); }
+            100% { opacity: 0; transform: translate(-50%, -50px) scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between overflow-x-hidden">
+
+    <!-- Header / Navigation -->
+    <header class="bg-slate-900/80 backdrop-blur border-b border-slate-800 p-3 px-4 flex justify-between items-center z-10">
+        <div class="flex items-center gap-2">
+            <i class="fa-solid fa-cards text-purple-400 text-xl"></i>
+            <h1 class="text-lg font-bold cinzel tracking-wider text-amber-400">Card RPG Arena</h1>
+        </div>
+        <div class="flex items-center gap-3">
+            <div id="turn-indicator" class="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-900/60 text-blue-300 border border-blue-500/40">
+                あなたのターン
+            </div>
+            <button onclick="downloadHTML()" class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs text-slate-200 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow">
+                <i class="fa-solid fa-download text-amber-400"></i> ソースコード保存
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Game Arena -->
+    <main class="flex-1 flex flex-col justify-between p-2 sm:p-4 max-w-4xl mx-auto w-full gap-4">
+
+        <!-- Enemy Area (Top) -->
+        <section class="flex flex-col items-center">
+            <div class="text-xs text-slate-400 mb-1 flex items-center gap-2">
+                <span>敵フィールド (1〜2体出現)</span>
+                <span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">撃破数: <span id="kill-count" class="text-amber-400 font-bold">0</span></span>
+            </div>
+            <div id="enemy-container" class="flex justify-center items-center gap-4 w-full min-h-[210px]">
+                <!-- Dynamic Enemy Cards Rendered Here -->
+            </div>
+        </section>
+
+        <!-- Battle Logs & Info Bar (Middle) -->
+        <section class="bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex flex-col h-28 shadow-inner relative overflow-hidden">
+            <div class="text-[11px] text-slate-400 font-bold mb-1 border-b border-slate-800/80 pb-1 flex justify-between">
+                <span><i class="fa-solid fa-scroll mr-1 text-slate-400"></i>バトルログ</span>
+                <span id="target-helper" class="text-purple-400 animate-pulse hidden">対象の敵カードをクリックしてください！</span>
+            </div>
+            <div id="battle-log" class="flex-1 overflow-y-auto space-y-1 text-xs font-mono text-slate-300">
+                <div class="text-slate-400">バトルが開始されました。行動を選択してください。</div>
+            </div>
+        </section>
+
+        <!-- Player Area (Bottom) -->
+        <section class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            
+            <!-- Player Card -->
+            <div id="player-card" class="card-container w-64 bg-slate-900 border-2 border-amber-500/50 rounded-xl p-3 shadow-2xl relative overflow-hidden flex-shrink-0">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="font-bold text-amber-400 text-sm">勇者 (Player)</span>
+                    <span class="text-xs font-bold bg-amber-950 text-amber-300 border border-amber-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <i class="fa-solid fa-sword text-[10px]"></i> <span id="player-atk">40</span>
+                    </span>
+                </div>
+
+                <!-- Card Image Area -->
+                <div class="w-full h-32 bg-slate-950 rounded-lg overflow-hidden relative mb-2 border border-slate-800 flex items-center justify-center">
+                    <img id="player-img" src="image/mycard.png" alt="mycard" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://placehold.co/240x160/1e293b/fbbf24?text=image/mycard.png';">
+                    <div id="player-debuff" class="hidden absolute bottom-1 right-1 bg-red-900/90 text-red-200 text-[10px] font-bold px-2 py-0.5 rounded-full border border-red-500 shadow">
+                        攻撃力1/2
+                    </div>
+                </div>
+
+                <!-- Player Stats -->
+                <div class="space-y-1.5">
+                    <!-- HP Bar -->
+                    <div>
+                        <div class="flex justify-between text-xs font-semibold mb-0.5">
+                            <span class="text-red-400"><i class="fa-solid fa-heart mr-1"></i>HP</span>
+                            <span id="player-hp-text" class="text-slate-200">500 / 500</span>
+                        </div>
+                        <div class="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
+                            <div id="player-hp-bar" class="bg-gradient-to-r from-red-600 to-red-500 h-2.5 rounded-full transition-all duration-300" style="width: 100%"></div>
+                        </div>
+                    </div>
+
+                    <!-- MP Bar -->
+                    <div>
+                        <div class="flex justify-between text-xs font-semibold mb-0.5">
+                            <span class="text-blue-400"><i class="fa-solid fa-bolt mr-1"></i>MP</span>
+                            <span id="player-mp-text" class="text-slate-200">500 / 500</span>
+                        </div>
+                        <div class="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
+                            <div id="player-mp-bar" class="bg-gradient-to-r from-blue-600 to-blue-400 h-2.5 rounded-full transition-all duration-300" style="width: 100%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Command Console -->
+            <div class="w-full sm:w-64 bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex flex-col gap-2">
+                <div class="text-xs font-bold text-slate-400 border-b border-slate-800 pb-1">コマンド選択</div>
+
+                <!-- Action Option: Normal Attack -->
+                <button id="btn-attack" onclick="selectAction('attack')" class="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold p-2.5 rounded-lg border border-amber-400/40 shadow text-xs flex justify-between items-center transition active:scale-95">
+                    <span class="flex items-center gap-2"><i class="fa-solid fa-hand-fist text-amber-300"></i> 通常攻撃</span>
+                    <span id="btn-attack-power" class="text-[10px] bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800 text-amber-300">40 ダメージ</span>
+                </button>
+
+                <!-- Action Option: Skills List -->
+                <div class="text-xs font-bold text-slate-400 mt-1 mb-0.5">所持スキル</div>
+                <div id="skills-list" class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    <!-- Dynamic Skill Buttons Rendered Here -->
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Game Over / Victory Modal Overlay -->
+    <div id="modal-overlay" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-slate-700 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
+            <div id="modal-icon" class="text-5xl mb-3"></div>
+            <h2 id="modal-title" class="text-2xl font-bold mb-2 cinzel"></h2>
+            <p id="modal-desc" class="text-sm text-slate-300 mb-6"></p>
+            <button onclick="resetGame()" class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-2.5 rounded-xl shadow-lg transition">
+                もう一度プレイする
+            </button>
+        </div>
+    </div>
+
+    <!-- Logic Script -->
+    <script>
+        // --- Game Database / Master Data ---
+        const ENEMY_TYPES = [
+            {
+                typeId: 'A',
+                name: '敵A',
+                img: 'image/card_A.png',
+                fallbackText: 'image/card_A.png',
+                atk: 10,
+                hp: 50,
+                maxHp: 50,
+                skillName: 'メテオ',
+                skillDesc: '次のターン30ダメージを与える',
+                mpCost: 10
+            },
+            {
+                typeId: 'B',
+                name: '敵B',
+                img: 'image/card_B.png',
+                fallbackText: 'image/card_B.png',
+                atk: 10,
+                hp: 50,
+                maxHp: 50,
+                skillName: '攻撃力デバフ',
+                skillDesc: '次のターン敵の攻撃力を半減させる',
+                mpCost: 10
+            },
+            {
+                typeId: 'C',
+                name: '敵C',
+                img: 'image/card_C.png',
+                fallbackText: 'image/card_C.png',
+                atk: 1,
+                hp: 100,
+                maxHp: 100,
+                skillName: 'ヒール',
+                skillDesc: '自分のHPを20回復する',
+                mpCost: 10
+            }
+        ];
+
+        // --- Game State ---
+        let player = {};
+        let activeEnemies = [];
+        let isPlayerTurn = true;
+        let selectedActionType = null; // 'attack' or skill object
+        let killCount = 0;
+
+        // --- Initialize Game ---
+        window.onload = () => {
+            initGame();
+        };
+
+        function initGame() {
+            player = {
+                hp: 500,
+                maxHp: 500,
+                mp: 500,
+                maxMp: 500,
+                baseAtk: 40,
+                atkDebuff: false, // 1/2 attack power debuff
+                skills: [
+                    {
+                        id: 'skill_hunter',
+                        name: 'スキルハンター',
+                        desc: '敵からスキルを確率で奪う(HP減少で成功率UP)',
+                        mpCost: 0
+                    }
+                ]
+            };
+
+            killCount = 0;
+            isPlayerTurn = true;
+            selectedActionType = null;
+
+            updateKillDisplay();
+            clearLog();
+            addLog("ゲーム開始！あなたの先攻です。行動を選んでください。");
+
+            spawnEnemies();
+            updatePlayerUI();
+            setPlayerTurn(true);
+        }
+
+        // --- Spawn Enemy Logic ---
+        function spawnEnemies() {
+            activeEnemies = [];
+            // Randomly spawn 1 or 2 enemies
+            const count = Math.floor(Math.random() * 2) + 1;
+
+            for (let i = 0; i < count; i++) {
+                const randomMaster = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+                activeEnemies.push({
+                    ...randomMaster,
+                    uniqueId: `enemy_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 4)}`,
+                    hp: randomMaster.hp,
+                    maxHp: randomMaster.hp,
+                    atkDebuff: false,
+                    nextTurnSkillAttack: false // For Enemy A's skill attack charge
+                });
+            }
+
+            renderEnemies();
+        }
+
+        function checkEnemiesAlive() {
+            if (activeEnemies.length === 0) {
+                addLog("全ての敵を倒した！ 次の敵が現れる...", "text-yellow-300 font-bold");
+                setTimeout(() => {
+                    spawnEnemies();
+                    setPlayerTurn(true);
+                }, 1000);
+                return false;
+            }
+            return true;
+        }
+
+        // --- Render UI ---
+        function renderEnemies() {
+            const container = document.getElementById('enemy-container');
+            container.innerHTML = '';
+
+            const isSkillHunter = typeof selectedActionType === 'object' && selectedActionType !== null && selectedActionType.id === 'skill_hunter';
+
+            activeEnemies.forEach((enemy) => {
+                const card = document.createElement('div');
+                const isTargetable = isPlayerTurn && selectedActionType !== null;
+                const targetClass = isTargetable ? (isSkillHunter ? 'skill-hunter-targetable' : 'targetable') : '';
+
+                // Calculate Hunter Success Rate based on remaining HP percentage
+                const hpPercent = enemy.hp / enemy.maxHp;
+                // Success rate calculation: 100% minus 85% * hpPercent (at 100% HP -> 15%, at near 0% HP -> ~100%)
+                const hunterRate = Math.min(100, Math.max(15, Math.round(100 - (hpPercent * 85))));
+
+                card.className = `card-container w-56 bg-slate-900 border-2 border-red-500/40 rounded-xl p-3 shadow-xl relative overflow-hidden flex-shrink-0 ${targetClass}`;
+                card.onclick = () => onEnemyClick(enemy);
+
+                card.innerHTML = `
+                    ${isSkillHunter ? `
+                        <div class="absolute top-2 left-2 z-20 bg-purple-900/90 border border-purple-400 text-purple-200 text-[11px] font-bold px-2 py-0.5 rounded-full shadow-lg">
+                            <i class="fa-solid fa-bullseye mr-1"></i>奪取率: ${hunterRate}%
+                        </div>
+                    ` : ''}
+
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-bold text-slate-200 text-xs truncate max-w-[120px]">${enemy.name}</span>
+                        <span class="text-[11px] font-bold bg-red-950 text-red-300 border border-red-800 px-1.5 py-0.5 rounded">
+                            <i class="fa-solid fa-sword text-[10px]"></i> ${enemy.atkDebuff ? Math.floor(enemy.atk / 2) : enemy.atk}
+                        </span>
+                    </div>
+
+                    <div class="w-full h-28 bg-slate-950 rounded-lg overflow-hidden relative mb-2 border border-slate-800 flex items-center justify-center">
+                        <img src="${enemy.img}" alt="${enemy.name}" class="w-full h-full object-cover" onerror="this.onerror=null; this.src='https://placehold.co/240x160/1e293b/ef4444?text=${enemy.fallbackText}';">
+                        ${enemy.atkDebuff ? `
+                            <div class="absolute bottom-1 right-1 bg-red-900/90 text-red-200 text-[9px] font-bold px-1.5 py-0.5 rounded-full border border-red-500">
+                                攻撃力1/2
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <div class="space-y-1.5 text-xs">
+                        <div>
+                            <div class="flex justify-between text-[11px] font-semibold mb-0.5">
+                                <span class="text-red-400"><i class="fa-solid fa-heart"></i> HP</span>
+                                <span class="text-slate-300">${enemy.hp} / ${enemy.maxHp}</span>
+                            </div>
+                            <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+                                <div class="bg-gradient-to-r from-red-600 to-red-500 h-2 rounded-full transition-all duration-300" style="width: ${(enemy.hp / enemy.maxHp) * 100}%"></div>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-950/70 p-1.5 rounded border border-slate-800/80 text-[10px] text-slate-400">
+                            <div class="font-bold text-yellow-400/90 truncate"><i class="fa-solid fa-bolt mr-1"></i>${enemy.skillName}</div>
+                            <div class="truncate text-slate-400">${enemy.skillDesc}</div>
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        function updatePlayerUI() {
+            const currentAtk = player.atkDebuff ? Math.floor(player.baseAtk / 2) : player.baseAtk;
+            document.getElementById('player-atk').innerText = currentAtk;
+            document.getElementById('btn-attack-power').innerText = `${currentAtk} ダメージ`;
+            document.getElementById('player-hp-text').innerText = `${player.hp} / ${player.maxHp}`;
+            document.getElementById('player-mp-text').innerText = `${player.mp} / ${player.maxMp}`;
+
+            const hpPercent = Math.max(0, (player.hp / player.maxHp) * 100);
+            const mpPercent = Math.max(0, (player.mp / player.maxMp) * 100);
+
+            document.getElementById('player-hp-bar').style.width = `${hpPercent}%`;
+            document.getElementById('player-mp-bar').style.width = `${mpPercent}%`;
+
+            const debuffBadge = document.getElementById('player-debuff');
+            if (player.atkDebuff) {
+                debuffBadge.classList.remove('hidden');
+            } else {
+                debuffBadge.classList.add('hidden');
+            }
+
+            renderSkills();
+        }
+
+        function renderSkills() {
+            const list = document.getElementById('skills-list');
+            list.innerHTML = '';
+
+            player.skills.forEach((skill) => {
+                const btn = document.createElement('button');
+                const isSelected = selectedActionType === skill;
+                const canAfford = player.mp >= skill.mpCost;
+
+                btn.className = `w-full text-left p-2 rounded-lg border text-xs font-semibold flex justify-between items-center transition ${
+                    isSelected 
+                        ? 'bg-purple-900/80 border-purple-400 text-purple-200 ring-2 ring-purple-500 shadow-lg' 
+                        : canAfford 
+                            ? 'bg-slate-800/80 border-slate-700 text-slate-200 hover:bg-slate-700' 
+                            : 'bg-slate-950 border-slate-900 text-slate-600 cursor-not-allowed'
+                }`;
+
+                btn.disabled = !isPlayerTurn || !canAfford;
+                btn.onclick = () => selectAction(skill);
+
+                btn.innerHTML = `
+                    <div>
+                        <div class="font-bold flex items-center gap-1">
+                            <i class="fa-solid ${skill.id === 'skill_hunter' ? 'fa-hand-sparkles text-purple-400' : 'fa-wand-magic-sparkles text-cyan-400'}"></i>
+                            ${skill.name}
+                        </div>
+                        <div class="text-[10px] opacity-75 font-normal">${skill.desc}</div>
+                    </div>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-blue-300">
+                        MP ${skill.mpCost}
+                    </span>
+                `;
+
+                list.appendChild(btn);
+            });
+        }
+
+        // --- Action Selection Logic ---
+        function selectAction(action) {
+            if (!isPlayerTurn) return;
+
+            if (selectedActionType === action) {
+                selectedActionType = null;
+                document.getElementById('target-helper').classList.add('hidden');
+            } else {
+                selectedActionType = action;
+                document.getElementById('target-helper').classList.remove('hidden');
+            }
+
+            // Update Attack Button visual highlight
+            const btnAttack = document.getElementById('btn-attack');
+            if (selectedActionType === 'attack') {
+                btnAttack.classList.add('ring-2', 'ring-yellow-400', 'bg-amber-500');
+            } else {
+                btnAttack.classList.remove('ring-2', 'ring-yellow-400', 'bg-amber-500');
+            }
+
+            renderEnemies();
+            renderSkills();
+        }
+
+        // --- Interaction: Clicking Enemy ---
+        function onEnemyClick(enemy) {
+            if (!isPlayerTurn || !selectedActionType) return;
+
+            const targetEnemy = activeEnemies.find(e => e.uniqueId === enemy.uniqueId);
+            if (!targetEnemy) return;
+
+            const action = selectedActionType;
+            selectedActionType = null;
+            document.getElementById('target-helper').classList.add('hidden');
+
+            if (action === 'attack') {
+                executePlayerAttack(targetEnemy);
+            } else if (typeof action === 'object') {
+                executePlayerSkill(action, targetEnemy);
+            }
+        }
+
+        // --- Player Turn Actions ---
+        function executePlayerAttack(target) {
+            const damage = player.atkDebuff ? Math.floor(player.baseAtk / 2) : player.baseAtk;
+            target.hp -= damage;
+            showPopup(damage, 'text-red-500', target.uniqueId);
+            addLog(`勇者の通常攻撃！ ${target.name} に ${damage} のダメージ！`, "text-amber-300");
+
+            if (player.atkDebuff) {
+                player.atkDebuff = false;
+                addLog("勇者の攻撃力低下状態が解除された。", "text-slate-400");
+            }
+
+            checkEnemyDeath(target);
+            endPlayerTurn();
+        }
+
+        function executePlayerSkill(skill, target) {
+            if (player.mp < skill.mpCost) {
+                addLog("MPが足りません！", "text-red-400");
+                return;
+            }
+
+            player.mp -= skill.mpCost;
+            updatePlayerUI();
+
+            if (skill.id === 'skill_hunter') {
+                // Skill Hunter Logic (Probability based on target's remaining HP %)
+                const hpPercent = target.hp / target.maxHp;
+                const successRate = Math.min(100, Math.max(15, Math.round(100 - (hpPercent * 85))));
+                const roll = Math.random() * 100;
+
+                addLog(`スキルハンター発動！ (${target.name} 残りHP:${Math.round(hpPercent * 100)}% 成功率:${successRate}%)`, "text-purple-400 font-bold");
+
+                if (roll <= successRate) {
+                    // Check if player already has this skill
+                    const hasSkill = player.skills.some(s => s.name === target.skillName);
+                    if (hasSkill) {
+                        addLog(`成功！しかし、既に【${target.skillName}】を取得済みです！`, "text-purple-300");
+                    } else {
+                        // Learn new skill
+                        let newSkillObj = {
+                            id: `stolen_${Date.now()}`,
+                            name: target.skillName,
+                            mpCost: target.mpCost,
+                            desc: target.skillDesc,
+                            targetRequired: target.typeId !== 'C' // Self target for heal
+                        };
+
+                        player.skills.push(newSkillObj);
+                        addLog(`成功！【${target.skillName}】を奪い取った！`, "text-yellow-300 font-bold");
+                        showPopup("SKILL SNATCH!", "text-purple-400", target.uniqueId);
+                    }
+                } else {
+                    addLog(`奪取失敗... (ダイス: ${Math.floor(roll)} / 成功閾値: ${successRate})`, "text-red-400");
+                    showPopup("FAILED...", "text-slate-400", target.uniqueId);
+                }
+            } else {
+                // Stolen skill execution logic
+                if (skill.name === 'メテオ') {
+                    const dmg = 30;
+                    target.hp -= dmg;
+                    showPopup(dmg, 'text-red-500 font-bold', target.uniqueId);
+                    addLog(`【メテオ】を発動！ ${target.name} に ${dmg} ダメージ！`, "text-cyan-300 font-bold");
+                    checkEnemyDeath(target);
+                } else if (skill.name === '攻撃力デバフ' || skill.name === '気合貯め') {
+                    target.atkDebuff = true;
+                    addLog(`【${skill.name}】を発動！ 次のターン ${target.name} の攻撃力を半減！`, "text-cyan-300");
+                    showPopup("ATK DOWN", "text-amber-400", target.uniqueId);
+                } else if (skill.name === 'ヒール') {
+                    const heal = 20;
+                    player.hp = Math.min(player.maxHp, player.hp + heal);
+                    addLog(`【ヒール】を発動！ 自分のHPが ${heal} 回復！`, "text-green-300");
+                    showPopup(`+${heal}`, "text-green-400", 'player-card');
+                }
+            }
+
+            if (player.atkDebuff) {
+                player.atkDebuff = false;
+                addLog("勇者の攻撃力低下状態が解除された。", "text-slate-400");
+            }
+
+            endPlayerTurn();
+        }
+
+        function checkEnemyDeath(enemy) {
+            if (enemy.hp <= 0) {
+                enemy.hp = 0;
+                addLog(`${enemy.name} を撃破した！`, "text-red-400 font-bold");
+                activeEnemies = activeEnemies.filter(e => e.uniqueId !== enemy.uniqueId);
+                killCount++;
+                updateKillDisplay();
+            }
+        }
+
+        function endPlayerTurn() {
+            updatePlayerUI();
+            renderEnemies();
+
+            if (!checkEnemiesAlive()) return;
+
+            setPlayerTurn(false);
+            setTimeout(executeEnemyTurn, 1000);
+        }
+
+        // --- Enemy Turn Logic ---
+        function executeEnemyTurn() {
+            if (activeEnemies.length === 0 || player.hp <= 0) return;
+
+            addLog("敵のターン！", "text-red-400 font-bold");
+
+            let delay = 0;
+
+            activeEnemies.forEach((enemy, index) => {
+                setTimeout(() => {
+                    if (player.hp <= 0) return;
+
+                    // Clear enemy debuff if present
+                    const currentEnemyAtk = enemy.atkDebuff ? Math.floor(enemy.atk / 2) : enemy.atk;
+                    if (enemy.atkDebuff) {
+                        enemy.atkDebuff = false;
+                    }
+
+                    // Enemy A delayed attack skill logic check
+                    if (enemy.nextTurnSkillAttack) {
+                        enemy.nextTurnSkillAttack = false;
+                        const damage = 30;
+                        player.hp -= damage;
+                        showPopup(damage, 'text-red-500 font-extrabold', 'player-card');
+                        addLog(`${enemy.name} の【メテオ】が直撃！ 勇者に ${damage} のダメージ！`, "text-red-400 font-bold");
+                    } else {
+                        // Choose randomly between base attack or skill
+                        const useSkill = Math.random() < 0.5;
+
+                        if (useSkill) {
+                            if (enemy.typeId === 'A') {
+                                enemy.nextTurnSkillAttack = true;
+                                addLog(`${enemy.name} は【メテオ】の魔法を詠唱している...！(次のターン30ダメージ)`, "text-yellow-400");
+                                showPopup("METEOR!", "text-yellow-400", enemy.uniqueId);
+                            } else if (enemy.typeId === 'B') {
+                                player.atkDebuff = true;
+                                addLog(`${enemy.name} の【攻撃力デバフ】！ 勇者の攻撃力が1ターン半減した！`, "text-purple-300");
+                                showPopup("ATK DOWN!", "text-purple-400", 'player-card');
+                            } else if (enemy.typeId === 'C') {
+                                const heal = 20;
+                                enemy.hp = Math.min(enemy.maxHp, enemy.hp + heal);
+                                addLog(`${enemy.name} は【ヒール】を唱えた！ HPが ${heal} 回復！`, "text-green-300");
+                                showPopup(`+${heal}`, "text-green-400", enemy.uniqueId);
+                            }
+                        } else {
+                            // Normal Attack
+                            player.hp -= currentEnemyAtk;
+                            showPopup(currentEnemyAtk, 'text-red-500', 'player-card');
+                            addLog(`${enemy.name} の通常攻撃！ 勇者に ${currentEnemyAtk} のダメージ！`, "text-red-300");
+                        }
+                    }
+
+                    updatePlayerUI();
+                    renderEnemies();
+
+                    if (player.hp <= 0) {
+                        player.hp = 0;
+                        updatePlayerUI();
+                        showGameOver(false);
+                        return;
+                    }
+
+                    // Final enemy turn finished
+                    if (index === activeEnemies.length - 1) {
+                        setTimeout(() => {
+                            setPlayerTurn(true);
+                            addLog("あなたのターンです。", "text-blue-300");
+                        }, 600);
+                    }
+                }, delay);
+
+                delay += 1000;
+            });
+        }
+
+        // --- Helper Functions ---
+        function setPlayerTurn(isPlayer) {
+            isPlayerTurn = isPlayer;
+            const indicator = document.getElementById('turn-indicator');
+            const btnAttack = document.getElementById('btn-attack');
+
+            if (isPlayer) {
+                indicator.innerText = "あなたのターン";
+                indicator.className = "text-xs font-bold px-2.5 py-1 rounded-full bg-blue-900/60 text-blue-300 border border-blue-500/40";
+                btnAttack.disabled = false;
+            } else {
+                indicator.innerText = "敵のターン";
+                indicator.className = "text-xs font-bold px-2.5 py-1 rounded-full bg-red-900/60 text-red-300 border border-red-500/40";
+                btnAttack.disabled = true;
+            }
+
+            renderSkills();
+        }
+
+        function updateKillDisplay() {
+            document.getElementById('kill-count').innerText = killCount;
+        }
+
+        function addLog(msg, colorClass = "text-slate-300") {
+            const logBox = document.getElementById('battle-log');
+            const entry = document.createElement('div');
+            entry.className = colorClass;
+            entry.innerHTML = `> ${msg}`;
+            logBox.appendChild(entry);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('battle-log').innerHTML = '';
+        }
+
+        function showPopup(text, colorClass, targetId) {
+            let containerElement;
+            if (targetId === 'player-card') {
+                containerElement = document.getElementById('player-card');
+            } else {
+                // Find enemy container
+                const enemyCards = document.getElementById('enemy-container').children;
+                const targetIndex = activeEnemies.findIndex(e => e.uniqueId === targetId);
+                if (targetIndex !== -1 && enemyCards[targetIndex]) {
+                    containerElement = enemyCards[targetIndex];
+                }
+            }
+
+            if (!containerElement) return;
+
+            const popup = document.createElement('div');
+            popup.className = `damage-popup text-xl ${colorClass}`;
+            popup.innerText = text;
+            popup.style.left = '50%';
+            popup.style.top = '40%';
+
+            containerElement.appendChild(popup);
+
+            setTimeout(() => {
+                popup.remove();
+            }, 1200);
+        }
+
+        function showGameOver(isWin) {
+            const modal = document.getElementById('modal-overlay');
+            const icon = document.getElementById('modal-icon');
+            const title = document.getElementById('modal-title');
+            const desc = document.getElementById('modal-desc');
+
+            modal.classList.remove('hidden');
+
+            if (isWin) {
+                icon.innerHTML = '<i class="fa-solid fa-trophy text-yellow-400"></i>';
+                title.innerText = "VICTORY!";
+                title.className = "text-2xl font-bold mb-2 cinzel text-yellow-400";
+                desc.innerText = `素晴らしい勝利です！ 倒した敵の数: ${killCount} 体`;
+            } else {
+                icon.innerHTML = '<i class="fa-solid fa-skull-crossbones text-red-500"></i>';
+                title.innerText = "GAME OVER";
+                title.className = "text-2xl font-bold mb-2 cinzel text-red-500";
+                desc.innerText = `力尽きてしまった... 撃破数: ${killCount} 体`;
+            }
+        }
+
+        function resetGame() {
+            document.getElementById('modal-overlay').classList.add('hidden');
+            initGame();
+        }
+
+        // --- Save / Download HTML Source Code ---
+        function downloadHTML() {
+            const htmlContent = document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'card_rpg_game.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+        }
+    </script>
+</body>
+</html>
